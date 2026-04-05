@@ -1,8 +1,13 @@
-# btrfs_fixes — Custom BTRFS Repair Tools
+# btrfs_fixes: Custom BTRFS Repair Tools
 
 Custom tools written during recovery of a 12TB multi-device BTRFS pool with
 severe extent tree corruption that the native commands (`btrfs check --repair`,
 `--init-extent-tree`, etc.) could not repair.
+
+**See [INCIDENT-ANALYSIS.md](./INCIDENT-ANALYSIS.md)** for a structured case
+study of the recovery, a root cause classification, and a set of constructive
+proposals for upstream `btrfs-progs` improvements that would have prevented
+the need for most of these tools.
 
 ## When to use these tools
 
@@ -152,7 +157,7 @@ over which specific blocks to remove.
 Initial version with a hardcoded list of missing backrefs. **Prefer
 `scan_and_fix_all_backrefs`**, which detects them automatically.
 
-## Session 2 toolset (2026-04-04/05) — Extended recovery for massive corruption
+## Session 2 toolset (2026-04-04/05): Extended recovery for massive corruption
 
 When the baseline tools above were insufficient (pool with 200K+ errors spread
 across multiple trees), these additional tools were built:
@@ -195,10 +200,10 @@ to skip space accounting (caller patches `used` manually first via
 ### `clean_orphan_dir_entries.c`
 Cleans orphan DIR_ITEM + DIR_INDEX entries from the FS_TREE. Chunks of 100
 entries per transaction. Updates parent INODE_ITEM `i_size` (decrement by
-`namelen × 2` — **critical bug fixed**: v1 decremented by `namelen` only,
+`namelen × 2`: **critical bug fixed**: v1 decremented by `namelen` only,
 leaving dirs in invalid state). Hardcoded exclusion list for critical top-level
 directory names (e.g. `pelis`, `series`, `music`, `backups`, `homestorage`).
-**NEVER decrement i_size by raw namelen** — BTRFS stores `namelen × 2` accounting.
+**NEVER decrement i_size by raw namelen**: BTRFS stores `namelen × 2` accounting.
 
 ### `clean_orphan_inode_refs.c`
 Walks FS_TREE for `INODE_REF` items whose `key.offset` (parent inode) is in an
@@ -218,7 +223,7 @@ For each target: walks and deletes EXTENT_DATA, INODE_REF, INODE_EXTREF, XATTR,
 and finally INODE_ITEM. Transaction per DIR family (atomic per subtree),
 chunks of 50 for standalone REGs. Hardcoded paranoid exclusion list.
 
-**⚠️ MAJOR SAFETY CAVEAT — see "Bulletproof subset criterion" below.**
+**⚠️ MAJOR SAFETY CAVEAT: see "Bulletproof subset criterion" below.**
 
 ### `remove_stale_ptrs_v2.c`
 Improved version of `remove_stale_ptrs`: detects empty leaves with `parent expected_key`
@@ -248,7 +253,7 @@ invokes `push_leaf_left(sibling)` or `push_leaf_right(sibling)` → if sibling h
 `btrfs_inc_extent_ref(phantom_bytenr)` → `BUG_ON(err)` in `extent-tree.c:1302` → SIGABRT.
 
 **The flags `fs_info->rebuilding_extent_tree = 1` and `trans->reinit_extent_tree = true`
-do NOT save the INC path** — they only exempt `BTRFS_DROP_DELAYED_REF` (verified in
+do NOT save the INC path**: they only exempt `BTRFS_DROP_DELAYED_REF` (verified in
 `extent-tree.c:3885`). `BTRFS_ADD_DELAYED_REF` (from `btrfs_inc_ref`) is fatal.
 
 **Bulletproof criterion** for any target inode that will be deleted:
@@ -358,11 +363,11 @@ sudo btrfs check --force /dev/sdX1
 
 ## Lessons learned
 
-1. **NEVER hard power-cycle** a multi-device BTRFS filesystem — combined
+1. **NEVER hard power-cycle** a multi-device BTRFS filesystem: combined
    free space tree + extent tree corruption is extremely hard to repair.
 
 2. **NEVER run `btrfs check --repair` multiple times in a row** if the first
-   run did not resolve everything — it can enter an infinite loop and make
+   run did not resolve everything: it can enter an infinite loop and make
    the filesystem dramatically worse.
 
 3. **Always back up the superblocks** before every write operation.
@@ -376,7 +381,7 @@ sudo btrfs check --force /dev/sdX1
 6. **One large commit** with many inserts is better than many small commits,
    because intermediate commits move the root tree.
 
-7. **`backup_slots` in the SB are NOT historical backups** — they are a sliding
+7. **`backup_slots` in the SB are NOT historical backups**: they are a sliding
    window of the most recent 4 commits only. A `btrfs check --repair` loop of
    46,000+ commits will rotate every slot ~11,000 times in minutes, obliterating
    any pre-crash state recoverable from the kernel. For real retention you need
@@ -397,7 +402,7 @@ sudo btrfs check --force /dev/sdX1
 11. **DIR `i_size` is stored as `sum(name_len × 2)`, NOT `sum(name_len)`**.
     Any orphan cleanup tool that decrements i_size on entry removal must
     decrement by `namelen × 2`. Getting this wrong leaves DIRs in an invalid
-    state that can manifest as `nlink = 2` later — which triggers a `rmdir`
+    state that can manifest as `nlink = 2` later: which triggers a `rmdir`
     bomb if the pool is mounted RW (a single `rm -rf` on a parent can delete
     thousands of subdirs silently).
 
