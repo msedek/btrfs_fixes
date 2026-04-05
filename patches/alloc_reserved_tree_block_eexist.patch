@@ -1,0 +1,22 @@
+# Patch: Tolerate EEXIST in alloc_reserved_tree_block
+#
+# Needed when using the custom repair programs in this repo.
+# Without this, batch backref injection fails when the delayed ref system
+# tries to create METADATA_ITEMs that were already inserted by our programs.
+#
+# Apply to btrfs-progs v6.19.1: kernel-shared/extent-tree.c around line 2440
+
+--- a/kernel-shared/extent-tree.c
++++ b/kernel-shared/extent-tree.c
+@@ -2439,6 +2439,11 @@ static int alloc_reserved_tree_block(struct btrfs_trans_handle *trans,
+ 			return -ENOMEM;
+ 
+ 		ret = btrfs_insert_empty_item(trans, extent_root, path, &ins, size);
++		if (ret == -EEXIST) {
++			btrfs_release_path(path);
++			btrfs_free_path(path);
++			return 0;
++		}
+ 		if (ret)
+ 			return ret;
+ 
